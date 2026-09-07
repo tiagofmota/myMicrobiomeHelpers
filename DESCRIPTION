@@ -21,4 +21,5 @@ Imports:
     vegan,
     ggpubr,
     DESeq2,
-    SpiecEasi
+    SpiecEasi,
+    tidyverse
