@@ -32,9 +32,60 @@ remotes::install_github("tiagofmota/myMicrobiomeHelpers")
 ## 💻 Quick Start Example
 
 ```R
-library(phyloseq)
-library(ggClusterNet)
-library(myMicrobiomeHelpers)
+# Run composition pipeline on Genus breakdowns
+res <- compos(
+  phylo            = my_phyloseq_obj,                       # Phyloseq object
+  level            = "Genus",                               # Taxonomic level as written in colnames(my_phyloseq_obj@tax_table)
+  group            = "Treatment",                           # Can be meta column name or custom group vector
+  transform.method = "CLR",                                 # Transformation method. So far, VST, ILR and CLR are accepted
+  transform.offset = 0.5,                                   # Transformation offset to be used in case transform.method is either "CLR" or "ILR"
+  group.order      = c("Control", "Low_Dose", "High_Dose")  # A vector with groups to set order of factors. The first will be for comparisons with all other like a negative control group
+)
+
+# Extract structured outputs
+transformed_data <- res@transformDF
+ComplexHeatmap::draw(res@heatmap, heatmap_legend_side = "bottom")
+
+# Run differential abundance engine using automated CPU tracking
+analysis_output <- difab(
+  phylo        = my_phyloseq_obj,                    # Phyloseq object
+  level        = "Genus",                            # Taxonomic level as written in colnames(my_phyloseq_obj@tax_table)
+  formula      = "~ TreatmentGroup + (1|SubjectID)", # Mixed-effect models benefit from multi-core parsing
+  var          = "Treatment",                        # Name of Variable (colname) of interest
+  groups       = c("Control", "Treated"),            # A vector with groups to set order of factors. The first will be for comparisons with all other like a negative control group
+  da.alpha     = 0.05,                               # Alpha threshold for adjusted p-value
+  FCtreshold   = 1.0,                                # Fold Change threshold
+  cpus         = NULL                                # Leave NULL to automatically manage 80% system resource load
+)
+
+# Extract structured results
+print(analysis_output@daPlot)
+
+# Export ASV table to biom format for picrust2 using any phyloseq object
+write_biom_csv(
+  ps,    # Phyloseq object
+  file   # Character with name for the biom file to be generated. It can be a full directory with filename in the end
+)
+
+# Performs post-hoc pairwise PERMANOVA tests directly on a pre-calculated distance/dissimilarity matrix (`dist` or symmetric matrix format) across multi-level group vectors. It automatically partitions distance subsets, applies multi-test corrections, and outputs multivariate homogeneity group dispersion values side-by-side.
+
+## Generate your custom distance matrix (e.g., PhiLR Euclidean distance)
+# (Or use any other metric like phyloseq::distance(ps, method = "wunifrac"))
+philr_coordinates <- philr(t(otu_table(my_phyloseq_obj)), tree, part, groups)
+philr_dist_matrix <- dist(philr_coordinates, method = "euclidean")
+
+## Extract matching metadata grouping vector
+group_factors <- as.character(sample_data(my_phyloseq_obj)\$Treatment)
+
+## Execute post-hoc comparisons using the pre-calculated distance matrix
+pairwise_results <- pairwise.adonis(
+  x          = as.matrix(dist), # Accepts dist object or full square distance matrix
+  factors    = group_factors,   # Grouping variable
+  p.adjust.m = "bonferroni"     # p-adjust method as from stats::p.adjust()
+)
+
+# View results table containing adjusted p-values and beta-dispersion p-values
+print(pairwise_results)
 
 # Run the bootstrapping network pipeline across a named list of phyloseq objects
 boot_network(
