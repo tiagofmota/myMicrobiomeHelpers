@@ -46,7 +46,7 @@ res <- compos(
 transformed_data <- res@transformDF
 ComplexHeatmap::draw(res@heatmap, heatmap_legend_side = "bottom")
 
-# Run differential abundance engine using automated CPU tracking
+# Run differential abundance analysis using automated CPU tracking
 analysis_output <- difab(
   phylo        = my_phyloseq_obj,                    # Phyloseq object
   level        = "Genus",                            # Taxonomic level as written in colnames(my_phyloseq_obj@tax_table)
