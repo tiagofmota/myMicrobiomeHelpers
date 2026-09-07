@@ -1,0 +1,23 @@
+Package: myMicrobiomeHelpers
+Type: Package
+Title: Helper Functions for Microbiome Analysis and Bootstrapping Networks
+Version: 0.1.0
+Author: Tiago Feitosa Mota <tiagofmotavet@gmail.com>
+Maintainer: Tiago Feitosa Mota <tiagofmotavet@gmail.com>
+Description: A minimalist package containing helper functions to facilitate the 
+    microbiome analysis of 16S rRNA sequencing data and to bootstrap microbial 
+    network evaluations using phyloseq and ggClusterNet.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    phyloseq,
+    ggClusterNet,
+    parallel,
+    mixOmics
+    ComplexHeatmap
+    MicrobiomeStat
+    microbiome
+    vegan
+    ggpubr
+    DESeq2
