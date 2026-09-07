@@ -1,272 +1,390 @@
-# Composition analysis. It returns a data frame with CLR transformed abundances ####
-# aggregated by group and a heatmap from CLR z score abundances
+# Composition analysis. It returns a data frame with CLR transformed abundances aggregated by group and a heatmap from CLR z score abundances
+# Define S4 return container
+setClass("Microb.composition", 
+         slots = c(transformDF = "data.frame", heatmap = "ANY"))
+
 compos <- function(phylo, 
                    level = "Genus", 
                    group, 
                    ht_subtittle = NULL, 
                    transform.method = "VST", 
                    transform.offset = .5, 
-                   group.order,
-                   color.range = c(min(scale(OTU.df.clr[,-ncol(OTU.df.clr)], center = F)), 0, 
-                                   max(scale(OTU.df.clr[,-ncol(OTU.df.clr)], center = F)))){
+                   group.order = NULL,
+                   color.range = NULL) {
   
+  # Input validation and defensive programming
+  if (missing(phylo)) stop("Error: 'phylo' dataset is missing.")
+  if (missing(group)) stop("Error: 'group' matching vector or sample metadata column is missing.")
+  
+  # Clean parameter matching
   level <- match.arg(level, choices = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"))
-  stopifnot("group should be a character vector" = is.vector(group, mode = "character"))
   transform.method <- match.arg(transform.method, choices = c("none", "CLR", "ILR", "VST"))
-  stopifnot("transform.offset should be a number higher than 0" = isTRUE(is.numeric(transform.offset) & transform.offset > 0))
-  stopifnot("group.order should be a character vector" = is.vector(group.order, mode = "character"))
-  stopifnot("group.order is not included in group vector" = all(group.order %in% group))
-  stopifnot("ht_subtittle should be a character vector to name the heatmap subtittle" = is.vector(group.order, mode = "character"))
   
-  if(level == "Species"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Species != "Unknown")
-  }else if(level == "Genus"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Genus != "Unknown")
-  }else if(level == "Family"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Family != "Unknown")
-  }else if(level == "Order"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Order != "Unknown")
-  }else if(level == "Class"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Class != "Unknown")
-  }else if(level == "Phylum"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Phylum != "Unknown")
-  }else if(level == "Kingdom"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Kingdom != "Unknown")
+  # Extract or validate group mappings
+  if (is.character(group) && length(group) == 1) {
+    # If a column name string is passed, extract from phyloseq sample data
+    meta_df <- as(phyloseq::sample_data(phylo), "data.frame")
+    if (!group %in% colnames(meta_df)) {
+      stop(sprintf("Error: Sample column '%s' not found inside phyloseq metadata.", group))
+    }
+    group_vec <- as.character(meta_df[[group]])
+  } else if (is.vector(group) && (is.character(group) || is.factor(group))) {
+    group_vec <- as.character(group)
+    if (length(group_vec) != phyloseq::nsamples(phylo)) {
+      stop("Error: Provided 'group' vector length does not match sample count in phyloseq object.")
+    }
+  } else {
+    stop("Error: 'group' must be a character string metadata name or an explicit matching group vector.")
   }
   
-  OTU.df <- data.frame(groups = group, t(pseq.fam@otu_table))
+  if (!is.numeric(transform.offset) || length(transform.offset) != 1 || transform.offset <= 0) {
+    stop("Error: 'transform.offset' parameter must be a positive numeric value.")
+  }
   
-  if(transform.method == "VST") {
-    
-    for (i in colnames(OTU.df[,-1])) {
-      OTU.df[,i] <- as.integer(OTU.df[,i])
+  # Standardize unique groups
+  unique_groups <- unique(group_vec)
+  if (is.null(group.order)) {
+    group.order <- sort(unique_groups)
+  } else {
+    if (!is.vector(group.order, mode = "character") || !all(group.order %in% unique_groups)) {
+      stop("Error: 'group.order' values must perfectly match the values contained inside the group identifier matrix.")
+    }
+  }
+  
+  if (!is.null(ht_subtittle) && (!is.character(ht_subtittle) || length(ht_subtittle) != 1)) {
+    stop("Error: 'ht_subtittle' must be a single descriptive character string.")
+  }
+
+  # Unified taxonomy aggregation and cleaning
+  pseq.fam <- microbiome::aggregate_taxa(phylo, level)
+  
+  # Filter out "Unknown" classifications
+  filter_expr <- sprintf("%s != 'Unknown'", level)
+  pseq.fam <- phyloseq::subset_taxa(pseq.fam, eval(parse(text = filter_expr)))
+  
+  # Transformations and groups summarization
+  otu_mat <- as(phyloseq::otu_table(pseq.fam), "matrix")
+  if (phyloseq::taxa_are_rows(pseq.fam)) {
+    otu_mat <- t(otu_mat)
+  }
+  
+  OTU.df <- data.frame(groups = group_vec, otu_mat, check.names = FALSE)
+  
+  if (transform.method == "VST") {
+    # Coerce to integer values safely for DESeq2 matrix compatibility
+    numeric_cols <- colnames(OTU.df)[-1]
+    for (col in numeric_cols) {
+      OTU.df[[col]] <- as.integer(OTU.df[[col]])
     }
     
-    OTU.df.vst <- DESeq2::varianceStabilizingTransformation(as.matrix(OTU.df[,-1]+1))
-    OTU.df.vst <- data.frame(groups = OTU.df$groups, OTU.df.vst) |>
-      group_by(groups) |> 
-      summarise_all(median) |>
+    # Calculate regularized transformations
+    vst_matrix <- DESeq2::varianceStabilizingTransformation(as.matrix(OTU.df[, -1] + 1))
+    OTU.df <- data.frame(groups = OTU.df$groups, vst_matrix, check.names = FALSE) |>
+      dplyr::group_by(groups) |> 
+      dplyr::summarise_all(mean) |>
       as.data.frame()
     
-    OTU.df <- OTU.df.vst
-  }else if(transform.method == "CLR"){
+  } else if (transform.method %in% c("CLR", "ILR")) {
+    # Aggregate data profiles first
     OTU.df <- OTU.df |>
-      group_by(groups) |> 
-      summarise_all(mean) |>
+      dplyr::group_by(groups) |> 
+      dplyr::summarise_all(mean) |>
       as.data.frame()  
     
-    OTU.df.clr <- logratio.transfo(OTU.df[,-1], 
-                                   logratio = "CLR", 
-                                   offset = transform.offset)
-    class(OTU.df.clr) <- "matrix"
-    OTU.df <- data.frame(groups = OTU.df$groups, OTU.df.clr)
-  }else if(transform.method == "ILR"){
-    OTU.df <- OTU.df |>
-      group_by(groups) |> 
-      summarise_all(median) |>
-      as.data.frame()  
+    # Run targeted logratio transformation from mixOmics package
+    transformed_mat <- mixOmics::logratio.transfo(as.matrix(OTU.df[, -1]), 
+                                                   logratio = transform.method, 
+                                                   offset = transform.offset)
+    transformed_mat <- as.matrix(transformed_mat)
+    OTU.df <- data.frame(groups = OTU.df$groups, transformed_mat, check.names = FALSE)
     
-    OTU.df.ilr <- logratio.transfo(OTU.df[,-1], 
-                                   logratio = "ILR", 
-                                   offset = transform.offset)
-    class(OTU.df.ilr) <- "matrix"
-    OTU.df <- data.frame(groups = OTU.df$groups, OTU.df.ilr)
-  }else if(transform.method == "none"){
+  } else if (transform.method == "none") {
     OTU.df <- OTU.df |>
-      group_by(groups) |> 
-      summarise_all(median) |>
+      dplyr::group_by(groups) |> 
+      dplyr::summarise_all(dplyr::median) |>
       as.data.frame()  
   }
   
-  ht <- Heatmap(t(scale(OTU.df[,-1], center = F)),
-                name = paste0(transform.method, " abundances\n        Z-score"),
-                col= circlize::colorRamp2(color.range,
-                                          c("darkblue","darkgrey","yellow")),
-                top_annotation = columnAnnotation(Groups = anno_text(OTU.df$groups, 
-                                                                     just = "center", 
-                                                                     rot = 0,
-                                                                     location = .5,
-                                                                     gp = gpar(border = "darkgrey", 
-                                                                               lwd = 2,
-                                                                               fill = "grey",
-                                                                               col = "darkred"),
-                                                                     height = max_text_height(group)*2)),
-                heatmap_legend_param = list(direction = "horizontal", legend_width = unit(3, "cm")),
-                column_split = factor(OTU.df$groups, levels = group.order),
-                row_names_gp = grid::gpar(fontsize = 10),
-                cluster_rows = T,
-                row_labels = as.expression(lapply(colnames(OTU.df[,-1]), function(a) bquote(italic(.(a))))),
-                cluster_columns = F,
-                row_names_side = "right",
-                show_column_names = T,
-                row_title = NULL,
-                column_title = ht_subtittle,
-                # dsitances availiables: 
-                # "euclidean" "maximum"   "manhattan" "canberra"  "binary"   
-                # "minkowski" "pearson" "spearman" "kendall"
-                clustering_distance_columns = "euclidean")
+  # Color range configuration and heatmap generation
+  scaled_matrix <- t(scale(OTU.df[, -1], center = FALSE))
   
-  setClass("Microb.composition", slots = c(transformDF="data.frame", 
-                                           heatmap="Heatmap"))
+  # Dynamically configure default color boundaries if not specified by the user
+  if (is.null(color.range)) {
+    color.range <- c(min(scaled_matrix, na.rm = TRUE), 0, max(scaled_matrix, na.rm = TRUE))
+  }
+  
+  ht <- ComplexHeatmap::Heatmap(
+    matrix = scaled_matrix,
+    name = paste0(transform.method, " abundances\nZ-score"),
+    col = circlize::colorRamp2(color.range, c("darkblue", "darkgrey", "yellow")),
+    top_annotation = ComplexHeatmap::columnAnnotation(
+      Groups = ComplexHeatmap::anno_text(
+        OTU.df$groups, just = "center", rot = 0, location = 0.5,
+        gp = grid::gpar(border = "darkgrey", lwd = 2, fill = "grey", col = "darkred"),
+        height = grid::max_text_height(OTU.df$groups) * 2
+      )
+    ),
+    heatmap_legend_param = list(direction = "horizontal", legend_width = grid::unit(3, "cm")),
+    column_split = factor(OTU.df$groups, levels = group.order),
+    row_names_gp = grid::gpar(fontsize = 10),
+    cluster_rows = TRUE,
+    row_labels = as.expression(lapply(rownames(scaled_matrix), function(a) bquote(italic(.(a))))),
+    cluster_columns = FALSE,
+    row_names_side = "right",
+    show_column_names = TRUE,
+    row_title = NULL,
+    column_title = ht_subtittle,
+    clustering_distance_columns = "euclidean"
+  )
+  
+  # Build S4 response payload object
   myObj <- new("Microb.composition", transformDF = OTU.df, heatmap = ht)
-  
   return(myObj)
 }
 
-# Function for whole DA analysis microbiome ####
-difab <- function(phylo, level = "Genus", formula, da.alpha = .05, da.dat.type = "count",
-                  p.adj.method = "BH", groups, var, FCtreshold = 1){
+# Function for differential abundance analysis of the microbiome using the LinDA method
+setOldClass("gg")
+setClass("Microb.da", 
+         slots = c(daResult  = "data.frame",
+                   daPlot    = "gg",
+                   linda.obj = "list"))
+
+difab <- function(phylo, 
+                  level = "Genus", 
+                  formula, 
+                  da.alpha = .05, 
+                  da.dat.type = "count",
+                  p.adj.method = "BH", 
+                  groups, 
+                  var, 
+                  FCtreshold = 1,
+                  cpus = NULL) {
   
-  stopifnot("phylo should be a phyloseq object" = isTRUE(class(phylo)[1] == "phyloseq"))
+  # Input validation and defensive programming
+  if (missing(phylo)) stop("Error: 'phylo' dataset parameter is missing.")
+  if (!inherits(phylo, "phyloseq")) stop("Error: 'phylo' must be a valid phyloseq object.")
+  if (missing(groups) || !is.character(groups) || length(groups) != 2) {
+    stop("Error: 'groups' must be a character vector of length 2 containing exactly: c('control', 'condition').")
+  }
+  if (missing(formula)) stop("Error: Modeling 'formula' string or expression is missing.")
+  if (missing(var) || !is.character(var) || length(var) != 1) {
+    stop("Error: 'var' must be a single character string matching the main variable column name in your metadata.")
+  }
+
   level <- match.arg(level, choices = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"))
-  stopifnot("groups should be a two character vector, c(control,condition)" = is.vector(groups, mode = "character"))
-  stopifnot("formula should be a character similar to a regression formula as ~condition1+characteristic2adjust+(1|ID)" = is.character(formula))
-  stopifnot("da.alpha should be a number between 0 and 1" = isTRUE(is.numeric(da.alpha) & da.alpha > 0 & da.alpha <= 1))
   da.dat.type <- match.arg(da.dat.type, choices = c("count", "proportion"))
   p.adj.method <- match.arg(p.adj.method, choices = c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"))
-  stopifnot("var should be a character of variable of interest colname the same way as in formula" = is.character(var))
-  stopifnot("FCtreshold should be a number higher than 0" = isTRUE(is.numeric(FCtreshold) & FCtreshold > 0))
   
-  if(level == "Species"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Species != "Unknown")
-    level.plural <- "Species"
-  }else if(level == "Genus"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Genus != "Unknown")
-    level.plural <- "Genera"
-  }else if(level == "Family"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Family != "Unknown")
-    level.plural <- "Families"
-  }else if(level == "Order"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Order != "Unknown")
-    level.plural <- "Orders"
-  }else if(level == "Class"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Class != "Unknown")
-    level.plural <- "Classes"
-  }else if(level == "Phylum"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Phylum != "Unknown")
-    level.plural <- "Phyla"
-  }else if(level == "Kingdom"){
-    pseq.fam <- aggregate_taxa(phylo, level)
-    pseq.fam <- subset_taxa(pseq.fam, Kingdom != "Unknown")
-    level.plural <- "Kingdoms"
+  if (!is.numeric(da.alpha) || length(da.alpha) != 1 || da.alpha <= 0 || da.alpha > 1) {
+    stop("Error: 'da.alpha' must be a numeric threshold between 0 and 1.")
   }
+  if (!is.numeric(FCtreshold) || length(FCtreshold) != 1 || FCtreshold < 0) {
+    stop("Error: 'FCtreshold' must be a positive numeric value.")
+  }
+
+  # Dynamic CPU cores configurations (80% Safety Cap)
+  available_cores <- parallel::detectCores()
   
-  pseq.fam = prune_samples(names(which(sample_sums(pseq.fam) > 0)), pseq.fam)
+  if (is.null(cpus)) {
+    recommended_cpus <- floor(available_cores * 0.8)
+    if (recommended_cpus < 1) recommended_cpus <- 1
+    message(sprintf("Notice: 'cpus' parameter not specified. Automatically utilizing 80%% of available cores (%d/%d) for LinDA calculations.", 
+                    recommended_cpus, available_cores))
+    cpus <- recommended_cpus
+  } else {
+    if (!is.numeric(cpus) || cpus %% 1 != 0 || cpus <= 0) {
+      stop("Error in 'cpus': Must be a positive integer representing CPU cores. Received value: ", cpus)
+    }
+    if (cpus > available_cores) {
+      recommended_cpus <- floor(available_cores * 0.8)
+      if (recommended_cpus < 1) recommended_cpus <- 1
+      warning(sprintf("Requested cpus (%d) exceeds available system cores (%d).\n  -> Automatically capping allocation to 80%% capacity: using %d cpus instead.",
+                      cpus, available_cores, recommended_cpus), immediate. = TRUE)
+      cpus <- recommended_cpus
+    }
+  }
+
+  # Map plural tags for clean plot titling
+  plural_mappings <- c(Kingdom = "Kingdoms", Phylum = "Phyla", Class = "Classes", 
+                       Order = "Orders", Family = "Families", Genus = "Genera", Species = "Species")
+  level.plural <- plural_mappings[level]
+
+  # Taxonomy aggregation and zero-omission filtering
+  pseq.fam <- microbiome::aggregate_taxa(phylo, level)
   
-  linda.obj <- linda(phyloseq.obj = pseq.fam, formula = formula, 
-                     alpha = da.alpha, feature.dat.type = da.dat.type, 
-                     p.adj.method = p.adj.method)
+  filter_expr <- sprintf("%s != 'Unknown'", level)
+  pseq.fam <- phyloseq::subset_taxa(pseq.fam, eval(parse(text = filter_expr)))
+  pseq.fam <- phyloseq::prune_samples(phyloseq::sample_sums(pseq.fam) > 0, pseq.fam)
+  
+  # LinDA regression models and data parsing
+  formal_formula <- if (is.character(formula)) as.formula(formula) else formula
+
+  # n.cores is passed dynamically here to MicrobiomeStat::linda
+  linda.obj <- MicrobiomeStat::linda(
+    phyloseq.obj     = pseq.fam, 
+    formula          = formal_formula, 
+    alpha            = da.alpha, 
+    feature.dat.type = da.dat.type, 
+    p.adj.method     = p.adj.method,
+    n.cores          = cpus
+  )
   
   da.output <- paste0(var, groups[2])
   
-  da.df <- as.data.frame(linda.obj$output[da.output])
-  colnames(da.df) <- c("baseMean", "log2FoldChange", "lfcSE", "stat",
-                       "pvalue", "padj", "reject", "df")
+  if (!da.output %in% names(linda.obj$output)) {
+    stop(sprintf("Error: Coefficient output matrix named '%s' was not found in LinDA results. Check your variable naming.", da.output))
+  }
+  
+  da.df <- as.data.frame(linda.obj$output[[da.output]])
+  colnames(da.df) <- c("baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj", "reject", "df")
+  
   da.df$bacs <- row.names(da.df)
-  da.df$varname[da.df$log2FoldChange < 0] <- groups[1]
-  da.df$varname[da.df$log2FoldChange > 0] <- groups[2]
-  da.df <- as.data.frame(da.df)
+  da.df$varname <- ifelse(da.df$log2FoldChange < 0, groups[1], groups[2])
   
-  da.plot <- ggplot(subset(da.df[da.df$log2FoldChange < -FCtreshold | 
-                                   da.df$log2FoldChange > FCtreshold,], reject == TRUE), 
-                    aes(x=reorder(bacs, log2FoldChange, sort), y=log2FoldChange, fill=varname)) +
-    geom_col(aes(fill = factor(varname)),
-             position = position_dodge2(preserve = "single")) +
-    scale_fill_manual(values=c("#0072B2", "#D55E00"), name = NULL, breaks = c(groups[1], groups[2])) +
-    theme_bw() +
-    ylab(expression(Log[2]*" Fold change")) +
-    theme(axis.title.y = element_blank(),
-          panel.grid.major.y = element_blank(),
-          strip.text = element_text(size = 11),
-          axis.text = element_text(size = 11),
-          legend.text = element_text(size = 11),
-          plot.title = element_text(size = 12, hjust = 0.5),
-          axis.text.y = element_text(face = "italic")) +
-    guides(fill=guide_legend(ncol=1)) +
-    ggtitle(paste("Differently abundant", level.plural)) +
-    coord_flip()
+  # Plotting pipeline
+  plot_data <- subset(da.df, reject == TRUE & (log2FoldChange < -FCtreshold | log2FoldChange > FCtreshold))
   
-  setOldClass("gg")
-  setClass("Microb.da", slots = c(daResult="data.frame",
-                                  daPlot="gg",
-                                  linda.obj = "list"))
+  da.plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(bacs, log2FoldChange), y = log2FoldChange, fill = varname)) +
+    ggplot2::geom_col(position = ggplot2::position_dodge2(preserve = "single")) +
+    ggplot2::scale_fill_manual(values = c("#0072B2", "#D55E00"), name = NULL, breaks = groups) +
+    ggplot2::theme_bw() +
+    ggplot2::labs(y = expression(Log[2]*" Fold change"), x = NULL, title = paste("Differently abundant", level.plural)) +
+    ggplot2::theme(
+      panel.grid.major.y = ggplot2::element_blank(),
+      strip.text         = ggplot2::element_text(size = 11),
+      axis.text          = ggplot2::element_text(size = 11),
+      legend.text        = ggplot2::element_text(size = 11),
+      plot.title         = ggplot2::element_text(size = 12, hjust = 0.5),
+      axis.text.y        = ggplot2::element_text(face = "italic")
+    ) +
+    ggplot2::guides(fill = ggplot2::guide_legend(ncol = 1)) +
+    ggplot2::coord_flip()
   
   myObj <- new("Microb.da", daResult = da.df, daPlot = da.plot, linda.obj = linda.obj)
-  
   return(myObj)
-  
 }
 
-# Export ASV table to biom for picrust2 ####
-write_biom_csv <- function(ps, file, sep = "; ") {
+# Export ASV table to biom for picrust2 using any phyloseq object
+write_biom_csv <- function(ps, file) {
   phyloseq::otu_table(ps) %>%
     as.data.frame() %>%
     rownames_to_column("#OTU ID") %>%
     left_join(phyloseq::tax_table(ps) %>% 
                 as.data.frame() %>%
                 rownames_to_column("#OTU ID") %>% 
-                tidyr::unite("taxonomy", !`#OTU ID`, sep = sep)) -> phyloseq_biom
+                tidyr::unite("taxonomy", !`#OTU ID`, sep = "; ")) -> phyloseq_biom
   
   readr::write_tsv(phyloseq_biom, file = file)
 }
 
-## Pairwise Adonis - PERMANOVA ####
-
-pairwise.adonis = function(x,factors, sim.function = 'vegdist', sim.method = 'bray', p.adjust.m ='bonferroni')
-{
-  #library(vegan)
+## Pairwise Adonis - PERMANOVA
+pairwise.adonis <- function(x, 
+                            factors, 
+                            p.adjust.m = "bonferroni") {
   
-  co = combn(unique(sort(as.character(factors))),2)
-  pairs = c()
-  F.Model =c()
-  R2 = c()
-  p.value = c()
+  # Input validation and defensive programming
+  if (missing(x)) stop("Error: Input distance matrix 'x' is missing.")
+  if (missing(factors)) stop("Error: Grouping vector 'factors' is missing.")
   
+  p.adjust.m <- match.arg(p.adjust.m, choices = c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"))
   
-  for(elem in 1:ncol(co)){
-    if(sim.function == 'daisy'){
-      library(cluster); x1 = daisy(x[factors %in% c(co[1,elem],co[2,elem]),],metric=sim.method)
-    } else{x1 = vegan::vegdist(x[factors %in% c(co[1,elem],co[2,elem]),],method=sim.method)}
-    
-    ad = vegan::adonis2(x1 ~ factors[factors %in% c(co[1,elem],co[2,elem])] );
-    pairs = c(pairs,paste(co[1,elem],'vs',co[2,elem]));
-    F.Model =c(F.Model,ad$F[1]);
-    R2 = c(R2,ad$R2[1]);
-    p.value = c(p.value,ad$`Pr(>F)`[1])
+  # Ensure the input is converted/treated as a full matrix for row/col indexing
+  full_dist_mat <- as.matrix(x)
+  factors_vec   <- as.character(factors)
+  
+  if (nrow(full_dist_mat) != length(factors_vec)) {
+    stop(sprintf("Error: Distance matrix dimensions (%dx%d) do not match 'factors' vector length (%d).", 
+                 nrow(full_dist_mat), ncol(full_dist_mat), length(factors_vec)))
   }
-  p.adjusted = p.adjust(p.value,method=p.adjust.m)
-  sig = c(rep('',length(p.adjusted)))
-  sig[p.adjusted <= 0.05] <-'.'
-  sig[p.adjusted <= 0.01] <-'*'
-  sig[p.adjusted <= 0.001] <-'**'
-  sig[p.adjusted <= 0.0001] <-'***'
   
-  pairw.res = data.frame(pairs,F.Model,R2,p.value,p.adjusted,sig)
-  print("Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1")
-  return(pairw.res)
+  if (nrow(full_dist_mat) != ncol(full_dist_mat)) {
+    stop("Error: Input 'x' must be a square distance matrix or a valid 'dist' object.")
+  }
   
-}
+  unique_groups <- unique(sort(factors_vec))
+  if (length(unique_groups) < 2) {
+    stop("Error: 'factors' must contain at least 2 unique groups to perform pairwise comparisons.")
+  }
+  
+  # Combination generation and memory pre-allocation
+  co <- combn(unique_groups, 2)
+  n_comparisons <- ncol(co)
+  
+  pairs_vec <- vector("character", n_comparisons)
+  F_Model   <- vector("numeric", n_comparisons)
+  R2        <- vector("numeric", n_comparisons)
+  p_value   <- vector("numeric", n_comparisons)
+  
+  # Pairwise distance matrix subsetting and adonis loop
+  for (elem in 1:n_comparisons) {
+    group1 <- co[1, elem]
+    group2 <- co[2, elem]
+    
+    # Identify which samples belong to the current pair
+    keep_indices <- factors_vec %in= c(group1, group2)
+    
+    # Subset BOTH rows and columns of the distance matrix to isolate the pair
+    sub_dist_mat <- full_dist_mat[keep_indices, keep_indices, drop = FALSE]
+    sub_factors  <- factors_vec[keep_indices]
+    
+    # Convert back to a 'dist' object as required by adonis2
+    sub_dist_obj <- as.dist(sub_dist_mat)
+    
+    # Execute adonis2 directly on the subsetted distance structure
+    ad <- vegan::adonis2(sub_dist_obj ~ sub_factors)
+    
+    pairs_vec[elem] <- paste(group1, "vs", group2)
+    F_Model[elem]   <- ad$F[1]
+    R2[elem]        <- ad$R2[1]
+    p_value[elem]   <- ad$`Pr(>F)`[1]
+  }
+  
+  # Multivariate homogeneity of groups dispersions on the full distance object
+  full_dist_obj <- as.dist(full_dist_mat)
+  mod_disp      <- vegan::betadisper(full_dist_obj, group = factors_vec)
+  disp_perm     <- vegan::permutest(mod_disp, pairwise = TRUE)
+  
+  # Extract raw pairwise dispersion results and map names
+  disp_p_matrix <- disp_perm$pairwise$permuted
+  disp_lookup   <- setNames(unname(disp_p_matrix), gsub("-", " vs ", rownames(disp_p_matrix)))
+  
+  # Safely match labels back into our pre-allocated vector
+  beta_disp_p <- vector("numeric", n_comparisons)
+  for (j in seq_along(pairs_vec)) {
+    alt_pair <- paste(co[2, j], "vs", co[1, j])
+    
+    if (pairs_vec[j] %in% names(disp_lookup)) {
+      beta_disp_p[j] <- disp_lookup[pairs_vec[j]]
+    } else if (alt_pair %in% names(disp_lookup)) {
+      beta_disp_p[j] <- disp_lookup[alt_pair]
+    } else {
+      beta_disp_p[j] <- NA
+    }
+  }
 
-## p-value matrix p adjustment ####
-mat_padjust <- function(x, method = "BH", ...) {
-  stopifnot(class(x)[1] == "matrix")
-  x[upper.tri(x)] <- p.adjust(x[upper.tri(x)], method = method)
-  x[lower.tri(x)] <- p.adjust(x[lower.tri(x)], method = method)
-  x[is.na(x)] <- 1
-  return(x)
+  # P-value adjustment and export
+  p.adjusted <- p.adjust(p_value, method = p.adjust.m)
+  
+  sig <- rep("", length(p.adjusted))
+  sig[p.adjusted <= 0.05]   <- "."
+  sig[p.adjusted <= 0.01]   <- "*"
+  sig[p.adjusted <= 0.001]  <- "**"
+  sig[p.adjusted <= 0.0001] <- "***"
+  
+  pairw.res <- data.frame(
+    pairs       = pairs_vec, 
+    F.Model     = F_Model, 
+    R2          = R2, 
+    p.value     = p_value, 
+    p.adjusted  = p.adjusted, 
+    sig         = sig,
+    beta_disp_p = beta_disp_p,
+    stringsAsFactors = FALSE
+  )
+  
+  cat("Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n")
+  
+  return(pairw.res)
 }
 
 # Bootstrap networks using ####
