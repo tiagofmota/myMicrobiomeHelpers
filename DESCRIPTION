@@ -20,4 +20,5 @@ Imports:
     microbiome,
     vegan,
     ggpubr,
-    DESeq2
+    DESeq2,
+    SpiecEasi
