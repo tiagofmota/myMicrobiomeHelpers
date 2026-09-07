@@ -402,10 +402,10 @@ boot_network <- function(phy_list, nboot, outputDir, keep_taxa, cpus = NULL, ...
         otu_boot <- otu_mat[boot_idx, , drop = FALSE]
         rownames(otu_boot) <- paste0("BootSample_", 1:n_samples_orig, "_", i)
         
-        keep_taxa <- colSums(otu_boot) >= keep_taxa
+        taxa2keep <- colSums(otu_boot) >= keep_taxa
         
         # Filter OTU table
-        otu_boot_filtered <- otu_boot[, keep_taxa, drop = FALSE]
+        otu_boot_filtered <- otu_boot[, taxa2keep, drop = FALSE]
         
         # Create phyloseq object for this bootstrap
         metadata_boot <- metadata[boot_idx, , drop = FALSE]
@@ -425,7 +425,7 @@ boot_network <- function(phy_list, nboot, outputDir, keep_taxa, cpus = NULL, ...
         
         r_thresh <- corMicro_args$r.threshold
         
-        corR_ref[[i]] = ifelse(abs(occor_ref[[1]]) > r_thresh & occor_ref[[4]] < 0.05, 1, 0 )
+        corR_ref[[i]] = ifelse(abs(occor_ref[[1]]) > r_thresh & occor_ref[[4]] < 0.05, occor_ref[[1]], 0 )
         count_ref[[i]] = otu_boot_filtered
         
         setTxtProgressBar(pb, i)
