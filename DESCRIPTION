@@ -14,10 +14,10 @@ Imports:
     phyloseq,
     ggClusterNet,
     parallel,
-    mixOmics
-    ComplexHeatmap
-    MicrobiomeStat
-    microbiome
-    vegan
-    ggpubr
+    mixOmics,
+    ComplexHeatmap,
+    MicrobiomeStat,
+    microbiome,
+    vegan,
+    ggpubr,
     DESeq2
