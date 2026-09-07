@@ -48,11 +48,22 @@ boot_network(
 
 ## 📋 Package Dependencies
 
-This package relies on the following core frameworks from CRAN and Bioconductor:
-* `phyloseq` - BiocManager::install("phyloseq")
-* `ggClusterNet` - remotes::install_github("taowenmicro/ggClusterNet")
-* `parallel` - install.packages("parallel")
-* 
+This package integrates multiple core ecology and data science frameworks. Since these dependencies span CRAN, Bioconductor, and GitHub, please ensure they are installed using the commands below:
+
+| Package | Source / Installation Command | Used In Function(s) |
+| :--- | :--- | :--- |
+| `parallel` | *Built-in (Base R — No installation required)* | `boot_network` |
+| `phyloseq` | `BiocManager::install("phyloseq")` | `boot_network`, `compos`, `difab`, `write_biom_csv` |
+| `ggClusterNet` | `remotes::install_github("taowenmicro/ggClusterNet")` | `boot_network` |
+| `mixOmics` | `BiocManager::install("mixOmics")` | `compos`, `difab` |
+| `microbiome` | `BiocManager::install("microbiome")` | `compos`, `difab` |
+| `ComplexHeatmap` | `BiocManager::install("ComplexHeatmap")` | `compos`  |
+| `MicrobiomeStat` | `remotes::install_github("cafferychen777/MicrobiomeStat")` | `difab` |
+| `vegan` | `install.packages("vegan")` | `pairwise.adonis` |
+| `DESeq2` | `BiocManager::install("DESeq2")` | `compos`  |
+| `SpiecEasi` | `remotes::install_github("zdk123/SpiecEasi")` | `boot_network`*If SparCC is used* |
+| `ggpubr` | `install.packages("ggpubr")` | `compos`, `difab` |
+| `tidyverse` | `install.packages("tidyverse")` | `write_biom_csv` |
 
 ## ⚠️ Disclaimer & Support
 
