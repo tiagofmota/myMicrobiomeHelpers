@@ -485,7 +485,7 @@ boot_network <- function(phy_list, nboot, outputDir, keep_taxa, cpus = NULL, ...
       sep = "\n")
   
   for(group in group_names){
-    if(file.exists(file.path(outputDir, check, group))){
+    if(file.exists(file.path(outputDir, check, paste0(group, "_Nets_OK.txt")))){
       cat("Group", group, 
           "has already been done previously. Jumping to next:", 
           group_names[which(group_names %in% group) + 1])
