@@ -50,3 +50,82 @@ chmod +x submit_pipeline.slurm
 # Set up conda environments
 conda create -n qiime2-amplicon-2025.7 -c conda-forge -c bioconda -c qiime2 qiime2
 conda create -n picrust2 -c bioconda -c conda-forge picrust2  # optional
+
+```
+
+## Usage
+### Required Arguments
+Argument	Description	Example
+
+```bash
+--work-dir	Working directory (absolute path)	/home/user/project
+--seqs-dir	Directory containing FASTQ files	/home/user/data/reads
+--forward-pattern	Pattern for forward reads	_R1, _1.fq.gz
+--reverse-pattern	Pattern for reverse reads	_R2, _2.fq.gz
+--n-char	Characters to trim for sample ID	5
+--o-manifest	Output manifest path (no extension)	results/manifest
+--o-qiime	Output directory for QIIME2 results	results/qiime2
+Optional Arguments
+Argument	Description	Default
+--d-denoise	Denoising method: deblur or dada2	deblur
+--p-picrust	Run PICRUSt2: true or false	false
+--threads	Number of CPU threads	4
+--qiime-env	Conda environment for QIIME2	qiime2-amplicon-2025.7
+--picrust-env	Conda environment for PICRUSt2	picrust2
+Primer Options (Region-Specific Classification)
+Argument	Description
+--forward-primer	Forward primer sequence (e.g., CCTACGGGNGGCWGCAG)
+--reverse-primer	Reverse primer sequence (e.g., GGACTACNVGGGTWTCTAAT)
+
+```
+Important: Both primers must be provided together. If omitted, the full-length classifier will be used.
+
+## Examples
+Example 1: Basic Pipeline (Full-Length Classifier)
+
+```bash
+./qiime2_picrust2_pipeline.sh \
+    --work-dir /project/16S_data \
+    --seqs-dir /project/raw_data \
+    --forward-pattern _R1_001.fastq.gz \
+    --reverse-pattern _R2_001.fastq.gz \
+    --n-char 5 \
+    --o-manifest results/manifest \
+    --o-qiime results/qiime2 \
+    --threads 8
+```
+
+Example 2: V3-V4 Region (DADA2 + Region-Specific Classifier)
+Region is specified by primers provided in arguments --forward-primer and --reverse-primer
+
+```bash
+./qiime2_picrust2_pipeline.sh \
+    --work-dir /project/16S_data \
+    --seqs-dir /project/raw_data \
+    --forward-pattern _R1 \
+    --reverse-pattern _R2 \
+    --n-char 5 \
+    --o-manifest results/manifest \
+    --o-qiime results/qiime2 \
+    --d-denoise dada2 \
+    --forward-primer CCTACGGGNGGCWGCAG \
+    --reverse-primer GGACTACNVGGGTWTCTAAT \
+    --threads 8
+```
+
+Example 3: Full Workflow (DADA2 + PICRUSt2)
+bash
+
+```bash
+./qiime2_picrust2_pipeline.sh \
+    --work-dir /project/16S_data \
+    --seqs-dir /project/raw_data \
+    --forward-pattern _R1 \
+    --reverse-pattern _R2 \
+    --n-char 5 \
+    --o-manifest results/manifest \
+    --o-qiime results/qiime2 \
+    --d-denoise dada2 \
+    --p-picrust true \
+    --threads 8
+```
