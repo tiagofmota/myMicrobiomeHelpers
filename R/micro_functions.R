@@ -413,8 +413,8 @@ boot_network <- function(phy_list, nboot, outputDir, keep_taxa, cpus = NULL, ...
   available_cores <- parallel::detectCores()
   
   if (is.null(cpus)) {
-    # If cpus is left blank, automatically assign 80% of system capacity
-    recommended_cpus <- floor(available_cores * 0.8)
+    # If cpus is left blank, automatically assign 20% of system capacity
+    recommended_cpus <- floor(available_cores * 0.2)
     if (recommended_cpus < 1) recommended_cpus <- 1
     
     message(sprintf("Notice: 'cpus' parameter not specified. Automatically utilizing 80%% of available cores (%d/%d).", 
@@ -429,7 +429,7 @@ boot_network <- function(phy_list, nboot, outputDir, keep_taxa, cpus = NULL, ...
     
     # Check if manually entered cpus input exceeds machine limits
     if (cpus > available_cores) {
-      recommended_cpus <- floor(available_cores * 0.8)
+      recommended_cpus <- floor(available_cores * 0.2)
       if (recommended_cpus < 1) recommended_cpus <- 1
       
       warning(sprintf(
