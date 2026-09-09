@@ -138,6 +138,7 @@ These scripts integrate multiple core ecology and data science frameworks. Since
 | `ggplot2` | `install.packages("ggplot2")` |  |
 | `igraph` | `install.packages("igraph")` |  |
 | `ape` | `install.packages('ape')` |  |
+| `decontam` | `BiocManager::install("decontam")` |  |
 
 ## ⚠️ Disclaimer & Support
 
@@ -166,6 +167,7 @@ Also cite the tools used:
     DESeq2 ------ Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2, Love et al., 2014, Genome Biology; https://doi.org/10.1186/s13059-014-0550-8
     LinDA ------ LinDA: linear models for differential abundance analysis of microbiome compositional data. Zhou et al., 2022, Genome Biology; https://doi.org/10.1186/s13059-022-02655-5
     clusterProfiler ------ Thirteen years of clusterProfiler, Yu, 2024, The Innovation; https://doi.org/10.1016/j.xinn.2024.100722
+    decontam ------ Simple statistical identification and removal of contaminant sequences in marker-gene and metagenomics data, Davis et al., 2018, Microbiome; https://doi.org/10.1186/s40168-018-0605-2
 
 Please cite packages according to citation()
 
