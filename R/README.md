@@ -1,32 +1,47 @@
-# myMicrobiomeHelpers
+# R Functions for Microbiome Analysis
 
-[![R-project](https://shields.io)](https://r-project.org)
-[![License: MIT](https://shields.io)](https://opensource.org)
+This folder contains R helper functions for analyzing microbiome data from QIIME2 and PICRUSt2 outputs.
 
-A minimalist R package designed to streamline, automate, and scale **microbiome analyses** and **bootstrapping networks**. This tool acts as an optimized, wrapper pipeline for integrating `phyloseq` datasets with downstream analysis. This repository contains custom R utility functions for microbiome analysis workflows of 16S rRNA sequencing data.
+---
 
-## 🚀 Key Features
+## File Contents
+
+### `micro_functions.R`
+This file contains all helper functions I have built to improve my microbiome analysis workflow. Key features and usage are described bellow.
+
+#### 🚀 Key Features
 
 * **Composition analysis:** Uses heatmaps to visualize the differences in abundance of the most abundant bacteria between groups at any given taxonomic level.
 * **Differential abundance analysis:** For a given taxonomic level of interest, a differential abundance analysis using LinDA is performed.
 * **Pairwise PERMANOVA:** A pairwise PERMANOVA between groups for the beta diversity using a distance matrix.
 * **Automated Bootstrapping:** Resamples sample matrices with replacement to generate robust, reproducible edge stability profiles.
-* **Smart Resource Management:** Automatically detects system architecture limits and optimizes multi-core processing assignments (defaulting safely to 80% CPU capacity).
+* **Smart Resource Management:** Automatically detects system architecture limits and optimizes multi-core processing assignments (defaulting safely to 20% CPU capacity).
 * **Fault-Tolerant Execution:** Built-in checkpointing skips previously computed experimental groups to safeguard against pipeline interruptions.
 * **Defensive Programming:** Implements strict data structure and type validation checks up front to prevent deep-loop execution failures.
 
-## 🛠️ Installation
+### `micro_analysis.R`
+This file contains the whole microbiome analysis script I have written during the past years and it includes the import of .qza data from the Qiime2 output files to make a phyloseq object until co-occurrence network analysis using SparCC. The script contains the following steps:
 
-You can install this portfolio utility directly from GitHub using the `remotes` package:
+| Analysis | Brief description | Packages involved |
+| :--- | :--- | :--- |
+| `Composition` | `CLR transformed counts are summarized by groups and plotted in heatmaps at any taxonomic level` | `phyloseq`; `microbiome`; `ComplexHeatmap` |
+| `Alpha diversity` | `Shannon, Inverse Simpson and Faith's phylogenetic diversity metrics are computed and plotted in violin boxplots` | `picante`; `phyloseq`; `ggplot2`; `ggpubr` |
+| `Beta diversity` | `PhiLR transformation is applied and using a using the Euclidian distance a PCoA scatter plot is produced. A pairwise PERMANOVA is used to statistically assess differences between groups` | `philr`; `mixOmics`; `vegan`; `ggplot2` |
+| `Differential abundance` | `LinDA is used in order to assess deferentially abundant bacteria and plotted in Diverging Bar Plot` | `MicrobiomeStat`; `ggplot2` |
+| `Functional prediction` | `The output file from PICRUSt2's functional prediction is used and LinDA is used to assess deferentially abundant KOs which are applied in an enrichment analysis` | `MicrobiomeProfiler`; `ggplot2`; `clusterProfiler` |
+| `Co-occurrence network` | `Bootstrapped co-occurrence networks are built and used for plotting as well as statistical comparison between groups using the global network metrics` | `igraph`; `SpiecEasi`; `ggClusterNet`; `parallel` |
 
+## 🛠️ Source all functions
 ```R
-# Install remotes if you haven't already
-if (!requireNamespace("remotes", quietly = TRUE)) {
-    install.packages("remotes")
-}
+# Option 1: Source directly from GitHub
+source("https://raw.githubusercontent.com/tiagofmota/myMicrobiomeHelpers/main/R/microbiome_helpers.R")
 
-# Install this package
-remotes::install_github("tiagofmota/myMicrobiomeHelpers")
+# Option 2: Clone the repository
+git clone https://github.com/tiagofmota/myMicrobiomeHelpers.git
+cd myMicrobiomeHelpers
+# Then source the R file
+R
+> source("R/microbiome_helpers.R")
 ```
 
 ## 💻 Quick Start Example
@@ -97,9 +112,9 @@ boot_network(
 )
 ```
 
-## 📋 Package Dependencies
+## 📋 Dependencies
 
-This package integrates multiple core ecology and data science frameworks. Since these dependencies span CRAN, Bioconductor, and GitHub, please ensure they are installed using the commands below:
+These scripts integrate multiple core ecology and data science frameworks. Since these dependencies span CRAN, Bioconductor, and GitHub, please ensure they are installed using the commands below:
 
 | Package | Source / Installation Command | Used In Function(s) |
 | :--- | :--- | :--- |
@@ -115,6 +130,14 @@ This package integrates multiple core ecology and data science frameworks. Since
 | `SpiecEasi` | `remotes::install_github("zdk123/SpiecEasi")` | `boot_network`*If SparCC is used* |
 | `ggpubr` | `install.packages("ggpubr")` | `compos`, `difab` |
 | `tidyverse` | `install.packages("tidyverse")` | `write_biom_csv` |
+| `qiime2R` | `remotes::install_github("jbisanz/qiime2R")` |  |
+| `picante` | `install.packages("picante")` |  |
+| `philr` | `BiocManager::install("philr")` |  |
+| `MicrobiomeProfiler` | `BiocManager::install("MicrobiomeProfiler")` |  |
+| `clusterProfiler` | `BiocManager::install("clusterProfiler")` |  |
+| `ggplot2` | `install.packages("ggplot2")` |  |
+| `igraph` | `install.packages("igraph")` |  |
+| `ape` | `install.packages('ape')` |  |
 
 ## ⚠️ Disclaimer & Support
 
@@ -126,5 +149,23 @@ This repository serves as a personal research utility and a professional portfol
 
 If you use this workflow or codebase to support your academic research, please cite it as follows:
 
-> **Mota, Tiago Feitosa.** (2026). *myMicrobiomeHelpers: An R package for microbiome and network bootstrapping workflow automation*. GitHub repository: `https://github.com`
+Mota, T.F. (2026). QIIME2 + PICRUSt2 Pipeline for 16S Analysis [Computer software]. GitHub. https://github.com/tiagofmota/myMicrobiomeHelpers
+
+Also cite the tools used:
+
+    QIIME 2 ------ Reproducible, interactive, scalable and extensible microbiome data science using QIIME 2. Bolyen et al., 2019, Nature Biotechnology; https://doi.org/10.1038/s41587-019-0209-9
+    PICRUSt2 ------ PICRUSt2 for prediction of metagenome functions. Douglas et al., 2020, Nature Biotechnology; https://doi.org/10.1038/s41587-020-0548-6
+    DADA2 ------ DADA2: High-resolution sample inference from Illumina amplicon data. Callahan et al., 2016, Nature Methods; https://doi.org/10.1038/nmeth.3869
+    Deblur ------ Deblur Rapidly Resolves Single-Nucleotide Community Sequence Patterns. Amir et al., 2017, Novel Systems Biology Techniques; https://doi.org/10.1128/msystems.00191-16
+    SILVA database ------ SILVA in 2026: a global core biodata resource for rRNA within the DSMZ digital diversity. Chuvochina et al., 2026, Nucleic Acids Research; https://doi.org/10.1093/nar/gkaf1247
+    phyloseq: phyloseq ------ An R Package for Reproducible Interactive Analysis and Graphics of Microbiome Census Data, McMurdie PJ & Holmes S, 2013, PLOS ONE; https://doi.org/10.1371/journal.pone.0061217
+    ComplexHeatmap ------ Complex heatmaps reveal patterns and correlations in multidimensional genomic data, Gu et al., 2016, Bioinformatics; https://doi.org/10.1093/bioinformatics/btw313
+    ape ------ ape 5.0: an environment for modern phylogenetics and evolutionary analyses in R, Paradis & Schliep, 2019, Bioinformatics; https://doi.org/10.1093/bioinformatics/bty633
+    picante ------ Picante: R tools for integrating phylogenies and ecology, Kembel et al., 2010, Bioinformatics; https://doi.org/10.1093/bioinformatics/btq166
+    philr ------ A phylogenetic transform enhances analysis of compositional microbiota data, 2017, eLife; https://doi.org/10.7554/eLife.21887
+    DESeq2 ------ Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2, Love et al., 2014, Genome Biology; https://doi.org/10.1186/s13059-014-0550-8
+    LinDA ------ LinDA: linear models for differential abundance analysis of microbiome compositional data. Zhou et al., 2022, Genome Biology; https://doi.org/10.1186/s13059-022-02655-5
+    clusterProfiler ------ Thirteen years of clusterProfiler, Yu, 2024, The Innovation; https://doi.org/10.1016/j.xinn.2024.100722
+
+Please cite packages according to citation()
 
