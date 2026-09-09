@@ -39,11 +39,11 @@ This repository contains scripts I've developed for my microbiome research. It b
 
 ```r
 # Option 1: Source directly from GitHub
-source("https://raw.githubusercontent.com/tiagofmota/myMicrobiomeHelpers/main/R/microbiome_helpers.R")
+source("https://raw.githubusercontent.com/tiagofmota/myMicrobiomeHelpers/main/R/micro_functions.R")
 
 # Option 2: Clone the repository
 git clone https://github.com/tiagofmota/myMicrobiomeHelpers.git
 cd myMicrobiomeHelpers
 # Then source the R file
 R
-> source("R/microbiome_helpers.R")
+> source("R/micro_functions.R")
