@@ -393,7 +393,7 @@ ggplot(tick.da.filt,
 # Functional analysis ####
 {
   # Load kegg brite map for further characterization of pathways
-  kegg_brite_map <- read.csv("~/Microbiome_metaanalysis/picrust1_KO_BRITE_map.tsv",
+  kegg_brite_map <- read.csv("picrust1_KO_BRITE_map.tsv", # File present in myMicrobiomeHelpers/R/picrust1_KO_BRITE_map.tsv
                              sep = "\t",
                              header = T)
   
@@ -457,41 +457,38 @@ ggplot(tick.da.filt,
                     c("Metabolism", "Biosynthesis of other secondary metabolites", "Staurosporine biosynthesis"))
   
   # Load PICURSt2 results
-  picrust2 <- read.delim("~/Microbiome_metaanalysis/qiime_outputs_new/picrust2_out_pipeline/pathways_out/path_abun_unstrat_descripKO.tsv", 
+  picrust2 <- read.delim("picrust2_out_pipeline/pathways_out/path_abun_unstrat_descripKO.tsv", # Path to PICRUSt2's output files
                          row.names = 1)[,-1]
   
   # Differential abundance for microbiome functional profile
   linda.fun <- linda(feature.dat = picrust2,
                      meta.dat = meta(ps2_cor),
-                     formula = "~ vc + sex + origin + washing + (1|tick_species)",
+                     formula = "~ Infection.status + Feeding.status + other_variable2control", # Use the same formula as in the differential abundance analysis of the bacteria
                      feature.dat.type = "count")
   
-  ko_comp <- linda.fun$output$vcCompetent[linda.fun$output$vcCompetent$pvalue < .05 & 
-                                            abs(linda.fun$output$vcCompetent$log2FoldChange) > 1.4,]
+  ko_res <- linda.fun$output$Infection.statusPositive[linda.fun$output$Infection.statusPositive$reject == TRUE & 
+                                                       abs(linda.fun$output$Infection.statusPositive$log2FoldChange) > 1.4,]
   
-  ko_comp.df <- data.frame(Ko = rownames(ko_comp),
+  ko_res.df <- data.frame(Ko = rownames(ko_comp),
                            Log2FC = ko_comp$log2FoldChange,
                            pvalue = ko_comp$pvalue,
                            padj = ko_comp$padj,
-                           group = ifelse(ko_comp$log2FoldChange > 0, "Up regulated in Competent", "Down regulated in Competent")
+                           group = ifelse(ko_res$log2FoldChange > 0, "Up regulated in Positive", "Down regulated in Positive")
   )
   
-  ko_comp.df$Ko <- gsub("ko:", "", ko_comp.df$Ko)
-  
-  openxlsx::write.xlsx(ko_comp.df, 
-                       file = "Results/Differentially_abundant_KEGGIDs.xlsx")
+  ko_res.df$Ko <- gsub("ko:", "", ko_res.df$Ko)
   
   # Enrichment
   ## List of compared clusters
-  ck_comp <- clusterProfiler::compareCluster(Ko~group,
-                                             data=ko_comp.df,
+  ck_res <- clusterProfiler::compareCluster(Ko~group,
+                                             data=ko_res.df,
                                              pAdjustMethod = "BH",
                                              qvalueCutoff = 0.2,
                                              pvalueCutoff = 0.05,
-                                             fun='enrichKO')
+                                             fun='enrichKO') # This enrichKO comes from MicrobiomeProfiler
   
   # Make dotplot of enriched pathways using enrichplot package function
-  path_data <- enrichplot::dotplot(ck_comp,
+  path_data <- enrichplot::dotplot(ck_res,
                                    showCategory= Inf,
                                    font.size = 5) + 
     ggplot2::theme(aspect.ratio = 1.8)
@@ -501,7 +498,7 @@ ggplot(tick.da.filt,
                               GeneRatio = as.numeric(sapply(path_data$data$GeneRatio,function(x) eval(parse(text=x)))),
                               BH = path_data$data$p.adjust,
                               value = path_data$data$Cluster,
-                              Associated_GeneID = path_data$data$geneID
+                              Associated_KOID = path_data$data$geneID
   )
   
   # Order the pathways data dataframe
@@ -517,10 +514,6 @@ ggplot(tick.da.filt,
                               gsub("\\n\\([0-9][0-9]\\)$", "", 
                                    pathways_data$value))
   
-  pathways_data$value <- ifelse(pathways_data$value == "Up regulated in Competent", 
-                                "Up", 
-                                "Down")
-  
   # Enriched Pathway dotplot. Use factor to sort the x axis according to time points. 
   # Value in parenthesis should be changed according to results.
   pathway_plot <- ggplot(pathways_data, aes(x = value,
@@ -530,9 +523,6 @@ ggplot(tick.da.filt,
     geom_point(alpha = 2,
                shape = 21, 
                size = 4) +
-    # facet_wrap(~factor(comparison, levels=c("Dead-HIV",
-    #                                        "Survivor-HIV")),
-    #            scales = "free_x") +
     theme_bw() +
     theme(axis.title.y = element_blank(),
           axis.text.x = element_text(size = 14, angle = 45, hjust = 1),
@@ -552,24 +542,27 @@ ggplot(tick.da.filt,
   pathway_plot
   
 }  
+                                                     
 # Co-occurence network ####
 ### Building and plotting the network ####
-# Change between the Competent and Non-competent groups
-
+# Make a vector with ASV that passess the detection and prevalence thresholds
 ASVs_2keep <- taxa_names(core(ps2, 
                          detection = 10, 
                          prevalence = .01, 
                          include.lowest = T
 ))
 
+# Aggregate for genus or any taxonomic level of interest and remove ASVs that did not pass the the detection and prevalence thresholds                                                      
 ps2_genus <- aggregate_taxa(prune_taxa(taxa_names(ps2) %in% ASVs_2keep, 
                                        ps2), 
                             "Genus")
 ps2_genus <- subset_taxa(ps2_genus, Genus != "Unknown")
-ps2_genus@sam_data$Infection.status <- as.factor(ps2_genus@sam_data$Infection.status)
+ps2_genus@sam_data$Infection.status <- as.factor(ps2_genus@sam_data$Infection.status
 
+# Set a minimum for taxa abundance. It is important to reduce the number of taxa if there are too many bacteria per group. Hundreds of bacteria in a group can lead to 10+ hours to run 100 bootstraps using 10 CPUs
 ntaxa_min <- 1
 
+# Split all groups in individual phyloseq objects
 ps2_genus_nymph <- prune_samples(ps2_genus@sam_data$life_stage == "Nymph", ps2_genus)
 
 ps2_genus_pos_fed <- subset_samples(ps2_genus_nymph, blood_status == "Fed" & 
@@ -596,174 +589,15 @@ ps2_genus_neg_unfed <- prune_taxa(taxa_sums(ps2_genus_neg_unfed) >= ntaxa_min, p
 ps2_genus_neg_unfed <- prune_samples(names(which(sample_sums(ps2_genus_neg_unfed) >= 1)), ps2_genus_neg_unfed)
 ntaxa(ps2_genus_neg_unfed)
 
+# Make a list of all group phyloseqs. It is important to name each element of the list accordingly as it will bes used as group name in the boot_network() function
 ps2_list <- list("Pos_Fed" = ps2_genus_pos_fed,
                  "Neg_Fed" = ps2_genus_neg_fed,
                  "Pos_Unfed" = ps2_genus_pos_unfed,
                  "Neg_Unfed" = ps2_genus_neg_unfed)
 
-NoSleepR::with_nosleep({
-  boot_network(ps2_list, 
-               nboot = 100,
-               outputDir = "boot_outputs",
-               keep_taxa = 10
-  )
-})
-
-
-# Key taxa ####
-source("C:/Users/tiago/OneDrive/Microbiome_metaanalysis/HCIC_keyNodes2.R")
-
-# start_time <- Sys.time()
-competent_boot <- bootstrap_network_hcic(
-  physeq = ps2_genus_comp,
-  group_var = "vc",
-  group_label = "Competent",
-  n_bootstrap = 100,
-  cor_threshold = 0.4,
-  min_reads = 10,
-  min_prevalence = 0.1,
-  n_cpus = 15
-)
-# end_time <- Sys.time()
-# 
-# time_comp <- end_time - start_time
-saveRDS(competent_boot, "C:/Users/tiago/OneDrive/Microbiome_metaanalysis/Net_boot_results/competent_boot.rds")
-
-# 
-# start_time <- Sys.time()
-noncompetent_boot <- bootstrap_network_hcic(
-  physeq = ps2_genus_ncomp,
-  group_var = "vc",
-  group_label = "Non_competent",
-  n_bootstrap = 100,
-  cor_threshold = 0.4,
-  min_reads = 10,
-  min_prevalence = 0.1,
-  n_cpus = 15
-)
-# end_time <- Sys.time()
-# 
-# time_ncomp <- end_time - start_time
-
-saveRDS(noncompetent_boot, "C:/Users/tiago/OneDrive/Microbiome_metaanalysis/Net_boot_results/noncompetent_boot.rds")
-
-# After bootstrapping in background, RDSs need to be read to include in the current environment
-competent_boot <- readRDS("~/Microbiome_metaanalysis/Net_boot_results/competent_boot.rds")
-noncompetent_boot <- readRDS("~/Microbiome_metaanalysis/Net_boot_results/noncompetent_boot.rds")
-competent_bootMetrics <- readRDS("~/Microbiome_metaanalysis/Net_boot_results/competent_boot_metrics.rds")
-noncompetent_bootMetrics <- readRDS("~/Microbiome_metaanalysis/Net_boot_results/noncompetent_boot_metrics.rds")
-
-# Compare groups
-comparison <- compare_hcic_groups(competent_boot, 
-                                  noncompetent_boot, 
-                                  metric = "HCIC")
-
-# View taxa that change keystone status
-comparison[comparison$role_change == TRUE, ]
-
-# Inspect results
-print(competent_boot)
-
-#
-
-intersect_bac <- intersect(colnames(competent_boot$bootstrap_data$HCIC), 
-                           colnames(noncompetent_boot$bootstrap_data$HCIC))
-
-comp_bac_pars <- lapply(1:length(competent_boot$stable_taxa), function(i) {
-  result <- sapply(competent_boot$bootstrap_data, function(mat) mat[, i])
-  result <- as.matrix(result)
-  colnames(result) <- names(competent_boot$bootstrap_data)
-  rownames(result) <- paste0("Boot_comp", seq(1, nrow(result), 1))
-  
-  return(result)
-})
-
-# Name list with bac names
-names(comp_bac_pars) <- colnames(competent_boot$bootstrap_data$HCIC)
-
-# Impute the median of each variable for PCA
-for(j in which(names(comp_bac_pars) %in% intersect_bac)) {
-  for (u in 1:ncol(comp_bac_pars[[j]])) {
-    comp_bac_pars[[j]][which(is.na(comp_bac_pars[[j]][,u])),u] <- median(comp_bac_pars[[j]][,u], na.rm = T)
-  }
-}
-
-# Run a PCA for each bac and make a matrix of PC1s of each bac and bootstrap
-for (bac.index in which(names(comp_bac_pars) %in% intersect_bac)) {
-  bac_name <- names(comp_bac_pars)[bac.index]
-  
-  pca_bac <- mixOmics::pca(comp_bac_pars[[bac.index]])
-  
-  if(!exists("mat_comp")){
-    mat_comp <- as.data.frame(pca_bac$x[,1]) 
-  }else{
-    col2add <- as.data.frame(pca_bac$x[,1]) 
-    mat_comp <- cbind(mat_comp, col2add)
-  }
-  
-}
-
-names(mat_comp) <- names(comp_bac_pars[which(names(comp_bac_pars) %in% intersect_bac)])
-
-ncomp_bac_pars <- lapply(1:length(noncompetent_boot$stable_taxa), function(i) {
-  result <- sapply(noncompetent_boot$bootstrap_data, function(mat) mat[, i])
-  result <- as.matrix(result)
-  colnames(result) <- names(noncompetent_boot$bootstrap_data)
-  rownames(result) <- paste0("Boot_ncomp", seq(1, nrow(result), 1))
-  
-  return(result)
-})
-
-# Name list with bac names
-names(ncomp_bac_pars) <- colnames(noncompetent_boot$bootstrap_data$HCIC)
-
-# Impute the median of each variable for PCA
-for(j in which(names(ncomp_bac_pars) %in% intersect_bac)) {
-  for (u in 1:ncol(ncomp_bac_pars[[j]])) {
-    ncomp_bac_pars[[j]][which(is.na(ncomp_bac_pars[[j]][,u])),u] <- median(ncomp_bac_pars[[j]][,u], na.rm = T)
-  }
-}
-
-# Run a PCA for each bac and make a matrix of PC1s of each bac and bootstrap
-for (bac.index in which(names(ncomp_bac_pars) %in% intersect_bac)) {
-  bac_name <- names(ncomp_bac_pars)[bac.index]
-  
-  pca_bac <- mixOmics::pca(ncomp_bac_pars[[bac.index]])
-  
-  if(!exists("mat_ncomp")){
-    mat_ncomp <- as.data.frame(pca_bac$x[,1]) 
-  }else{
-    col2add <- as.data.frame(pca_bac$x[,1]) 
-    mat_ncomp <- cbind(mat_ncomp, col2add)
-  }
-  
-}
-
-names(mat_ncomp) <- names(ncomp_bac_pars[which(names(ncomp_bac_pars) %in% intersect_bac)])
-
-mat_keystone <- as.data.frame(cbind(t(mat_ncomp),t(mat_comp)))
-meta_keystone <- data.frame("Sample" = colnames(mat_keystone),
-                            "Class" = c(rep("Non Competent", 100), rep("Competent", 100)))
-
-mdp_comp_vs_ncomp <- mdp(mat_keystone, meta_keystone, "Non Competent")
-
-meta_keystone <- data.frame("Sample" = colnames(mat_keystone),
-                            "Class" = c(rep("Competent", 100), rep("Non Competent", 100)))
-
-mdp_ncomp_vs_comp <- mdp(mat_keystone, meta_keystone, "Non Competent")
-
-abundance_comp <- list()
-abundance_ncomp <- list()
-prevalence_comp <- list()
-prevalence_ncomp <- list()
-
-for(chunk in 1:10){
-  min_index <- (chunk*10)-9
-  max_index <- chunk*10
-  abundance_comp[[chunk]] <- colMeans(competent_boot$bootstrap_data$abundance[min_index:max_index,], na.rm = T)
-  abundance_comp[[chunk]] <- colMeans(noncompetent_bootMetrics$bootstrap_data$abundance[min_index:max_index,], na.rm = T)
-  prevalence_comp[[chunk]] <- colMeans(competent_boot$bootstrap_data$prevalence[min_index:max_index,], na.rm = T)
-  prevalence_ncomp[[chunk]] <- colMeans(noncompetent_bootMetrics$bootstrap_data$prevalence[min_index:max_index,], na.rm = T)
-}
-
-
+boot_network(ps2_list, 
+             nboot = 100,
+             outputDir = "boot_outputs",
+             keep_taxa = 10,
+             cpus = 10 # If not set it will use 20% of all available CPUs. In a personal computer it is fine, but when using a HPC it can be problematic
+            )
