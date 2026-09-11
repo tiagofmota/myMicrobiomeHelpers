@@ -108,7 +108,7 @@ boot_network(
   nboot      = 100,              # Number of bootstrap iterations
   outputDir  = "./network_res",  # Directory to save .rds outputs and checkpoints
   keep_taxa  = 10,               # Minimum abundance threshold to keep an ASV
-  cpus       = NULL              # Leave NULL to automatically allocate 80% of system cores
+  cpus       = NULL              # Leave NULL to automatically allocate 20% of system cores. It will detect SLURM_CPUS_PER_TASK if it is used within a SLURM job and use all CPUs in this case. So, in case the function is used in a HPC through SLURM, the number o CPUs should be set in the job submission, --cpus-per-task
 )
 ```
 
