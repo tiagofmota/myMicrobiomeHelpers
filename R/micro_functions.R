@@ -388,6 +388,24 @@ pairwise.adonis <- function(x,
 }
 
 # Bootstrap networks using ####
+get_available_cpus <- function(percent = 0.2) {
+  slurm_cpus <- suppressWarnings(
+    as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA))
+  )
+  
+  if (!is.na(slurm_cpus) && slurm_cpus >= 1) {
+    message(sprintf("SLURM detected: using %d CPU(s).", slurm_cpus))
+    return(slurm_cpus)
+  }
+  
+  hw_cpus <- parallel::detectCores(logical = FALSE)
+  if (is.na(hw_cpus) || hw_cpus < 1) hw_cpus <- 1L
+  cpus <- max(1L, floor(hw_cpus * percent))
+  message(sprintf("No SLURM detected: using %d of %d physical core(s).",
+                  cpus, hw_cpus))
+  cpus
+}
+                               
 boot_network <- function(phy_list, nboot, outputDir, keep_taxa, cpus = NULL, ...){
   
   if (missing(phy_list)) {
@@ -410,35 +428,13 @@ boot_network <- function(phy_list, nboot, outputDir, keep_taxa, cpus = NULL, ...
          "  -> Expected: A numeric threshold for filtering ASVs. Taxa with total counts below this value within a bootstrap iteration will be discarded.")
   }
   
-  available_cores <- parallel::detectCores()
-  
   if (is.null(cpus)) {
-    # If cpus is left blank, automatically assign 20% of system capacity
-    recommended_cpus <- floor(available_cores * 0.2)
-    if (recommended_cpus < 1) recommended_cpus <- 1
-    
-    message(sprintf("Notice: 'cpus' parameter not specified. Automatically utilizing 80%% of available cores (%d/%d).", 
-                    recommended_cpus, available_cores))
-    cpus <- recommended_cpus
-    
+  cpus <- get_available_cpus()
   } else {
-    # Validate manually entered cpus input
+  # validate user-supplied value (unchanged)
     if (!is.numeric(cpus) || cpus %% 1 != 0 || cpus <= 0) {
       stop("Error in 'cpus': Must be a positive integer representing CPU cores. Received value: ", cpus)
-    }
-    
-    # Check if manually entered cpus input exceeds machine limits
-    if (cpus > available_cores) {
-      recommended_cpus <- floor(available_cores * 0.2)
-      if (recommended_cpus < 1) recommended_cpus <- 1
-      
-      warning(sprintf(
-        "Requested cpus (%d) exceeds available system cores (%d).\n  -> Automatically capping allocation to 80%% capacity: using %d cpus instead.",
-        cpus, available_cores, recommended_cpus
-      ), immediate. = TRUE)
-      
-      cpus <- recommended_cpus
-    }
+      }
   }
   
   # Validate phy_list (Must be a list and MUST be named)
