@@ -145,7 +145,7 @@ compos <- function(phylo,
 setOldClass("gg")
 setClass("Microb.da", 
          slots = c(daResult  = "data.frame",
-                   daPlot    = "gg",
+                   daPlot    = "ANY",
                    linda.obj = "list"))
 
 difab <- function(phylo, 
@@ -181,11 +181,11 @@ difab <- function(phylo,
     stop("Error: 'FCtreshold' must be a positive numeric value.")
   }
 
-  # Dynamic CPU cores configurations (80% Safety Cap)
+  # Dynamic CPU cores configurations (20% Safety Cap)
   available_cores <- parallel::detectCores()
   
   if (is.null(cpus)) {
-    recommended_cpus <- floor(available_cores * 0.8)
+    recommended_cpus <- floor(available_cores * 0.2)
     if (recommended_cpus < 1) recommended_cpus <- 1
     message(sprintf("Notice: 'cpus' parameter not specified. Automatically utilizing 80%% of available cores (%d/%d) for LinDA calculations.", 
                     recommended_cpus, available_cores))
