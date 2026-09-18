@@ -187,7 +187,7 @@ difab <- function(phylo,
   if (is.null(cpus)) {
     recommended_cpus <- floor(available_cores * 0.2)
     if (recommended_cpus < 1) recommended_cpus <- 1
-    message(sprintf("Notice: 'cpus' parameter not specified. Automatically utilizing 80%% of available cores (%d/%d) for LinDA calculations.", 
+    message(sprintf("Notice: 'cpus' parameter not specified. Automatically utilizing 20%% of available cores (%d/%d) for LinDA calculations.", 
                     recommended_cpus, available_cores))
     cpus <- recommended_cpus
   } else {
@@ -195,9 +195,9 @@ difab <- function(phylo,
       stop("Error in 'cpus': Must be a positive integer representing CPU cores. Received value: ", cpus)
     }
     if (cpus > available_cores) {
-      recommended_cpus <- floor(available_cores * 0.8)
+      recommended_cpus <- floor(available_cores * 0.2)
       if (recommended_cpus < 1) recommended_cpus <- 1
-      warning(sprintf("Requested cpus (%d) exceeds available system cores (%d).\n  -> Automatically capping allocation to 80%% capacity: using %d cpus instead.",
+      warning(sprintf("Requested cpus (%d) exceeds available system cores (%d).\n  -> Automatically capping allocation to 20%% capacity: using %d cpus instead.",
                       cpus, available_cores, recommended_cpus), immediate. = TRUE)
       cpus <- recommended_cpus
     }
@@ -211,17 +211,14 @@ difab <- function(phylo,
   # Taxonomy aggregation and zero-omission filtering
   pseq.fam <- microbiome::aggregate_taxa(phylo, level)
   
-  filter_expr <- sprintf("%s != 'Unknown'", level)
-  pseq.fam <- phyloseq::subset_taxa(pseq.fam, eval(parse(text = filter_expr)))
+  # Filter out "Unknown" classifications
+  pseq.fam <- phyloseq::subset_taxa(pseq.fam, level != 'Unknown')
   pseq.fam <- phyloseq::prune_samples(phyloseq::sample_sums(pseq.fam) > 0, pseq.fam)
-  
-  # LinDA regression models and data parsing
-  formal_formula <- if (is.character(formula)) as.formula(formula) else formula
 
   # n.cores is passed dynamically here to MicrobiomeStat::linda
   linda.obj <- MicrobiomeStat::linda(
     phyloseq.obj     = pseq.fam, 
-    formula          = formal_formula, 
+    formula          = formula, 
     alpha            = da.alpha, 
     feature.dat.type = da.dat.type, 
     p.adj.method     = p.adj.method,
