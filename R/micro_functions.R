@@ -1,5 +1,5 @@
-# Composition analysis. It returns a data frame with CLR transformed abundances aggregated by group and a heatmap from CLR z score abundances
-# Define S4 return container
+# Composition analysis. It returns a data frame with CLR transformed abundances ####
+# aggregated by group and a heatmap from CLR z score abundances
 setClass("Microb.composition", 
          slots = c(transformDF = "data.frame", heatmap = "ANY"))
 
@@ -54,13 +54,12 @@ compos <- function(phylo,
   if (!is.null(ht_subtittle) && (!is.character(ht_subtittle) || length(ht_subtittle) != 1)) {
     stop("Error: 'ht_subtittle' must be a single descriptive character string.")
   }
-
+  
   # Unified taxonomy aggregation and cleaning
   pseq.fam <- microbiome::aggregate_taxa(phylo, level)
   
   # Filter out "Unknown" classifications
-  filter_expr <- sprintf("%s != 'Unknown'", level)
-  pseq.fam <- phyloseq::subset_taxa(pseq.fam, eval(parse(text = filter_expr)))
+  pseq.fam <- phyloseq::subset_taxa(pseq.fam, level != 'Unknown')
   
   # Transformations and groups summarization
   otu_mat <- as(phyloseq::otu_table(pseq.fam), "matrix")
@@ -93,15 +92,15 @@ compos <- function(phylo,
     
     # Run targeted logratio transformation from mixOmics package
     transformed_mat <- mixOmics::logratio.transfo(as.matrix(OTU.df[, -1]), 
-                                                   logratio = transform.method, 
-                                                   offset = transform.offset)
-    transformed_mat <- as.matrix(transformed_mat)
+                                                  logratio = transform.method, 
+                                                  offset = transform.offset)
+    class(transformed_mat) <- "matrix"
     OTU.df <- data.frame(groups = OTU.df$groups, transformed_mat, check.names = FALSE)
     
   } else if (transform.method == "none") {
     OTU.df <- OTU.df |>
       dplyr::group_by(groups) |> 
-      dplyr::summarise_all(dplyr::median) |>
+      dplyr::summarise_all(mean) |>
       as.data.frame()  
   }
   
@@ -121,7 +120,7 @@ compos <- function(phylo,
       Groups = ComplexHeatmap::anno_text(
         OTU.df$groups, just = "center", rot = 0, location = 0.5,
         gp = grid::gpar(border = "darkgrey", lwd = 2, fill = "grey", col = "darkred"),
-        height = grid::max_text_height(OTU.df$groups) * 2
+        height = ComplexHeatmap::max_text_height(OTU.df$groups) * 2
       )
     ),
     heatmap_legend_param = list(direction = "horizontal", legend_width = grid::unit(3, "cm")),
